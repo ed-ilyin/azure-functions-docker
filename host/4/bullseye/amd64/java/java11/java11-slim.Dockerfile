@@ -1,8 +1,13 @@
 # Build the runtime from source
 ARG HOST_VERSION=4.0.1.16815
-ARG JAVA_VERSION=11u11
+ARG JAVA_VERSION=11.0.12.7.1
+ARG BASE_JDK_URL=https://aka.ms/download-jdk
+ARG JAVA_HOME=/usr/lib/jvm/msft-11-x64
 FROM mcr.microsoft.com/dotnet/sdk:6.0.100-rc.2 AS runtime-image
 ARG HOST_VERSION
+ARG JAVA_VERSION
+ARG BASE_JDK_URL
+ARG JAVA_HOME
 
 ENV PublishWithAspNetCoreTargetManifest=false
 ENV DEBIAN_FRONTEND=noninteractive
@@ -37,9 +42,18 @@ RUN EXTENSION_BUNDLE_VERSION=1.8.1 && \
     rm -f /$EXTENSION_BUNDLE_FILENAME_V3 &&\
     find /FuncExtensionBundles/ -type f -exec chmod 644 {} \;
 
-FROM mcr.microsoft.com/java/jre-headless:${JAVA_VERSION}-zulu-debian10-with-tools as jre
+RUN apt-get -qq update \
+    && apt-get -qqy install curl \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p ${JAVA_HOME} \
+    && curl -fsSL -o /tmp/jdk.tar.gz ${BASE_JDK_URL}/microsoft-jdk-${JAVA_VERSION}-linux-x64.tar.gz \
+    && tar -xzf /tmp/jdk.tar.gz -C ${JAVA_HOME} --strip-components=1 \
+    && rm -f /tmp/jdk.tar.gz
+
 FROM mcr.microsoft.com/dotnet/nightly/runtime-deps:6.0.0
 ARG HOST_VERSION
+ARG JAVA_HOME
 
 ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
     HOME=/home \
@@ -53,9 +67,9 @@ RUN apt-get update && \
 
 COPY --from=runtime-image [ "/azure-functions-host", "/azure-functions-host" ]
 COPY --from=runtime-image [ "/workers/java", "/azure-functions-host/workers/java" ]
-COPY --from=jre [ "/usr/lib/jvm/zre-hl-tools-11-azure-amd64", "/usr/lib/jvm/zre-11-azure-amd64" ]
+COPY --from=runtime-image [ "${JAVA_HOME}", "${JAVA_HOME}" ]
 
-ENV JAVA_HOME /usr/lib/jvm/zre-11-azure-amd64
+ENV JAVA_HOME ${JAVA_HOME}
 
 COPY --from=runtime-image [ "/FuncExtensionBundles", "/FuncExtensionBundles" ]
 
